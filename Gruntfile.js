@@ -2,17 +2,7 @@ module.exports = function(grunt) {
 
     grunt.initConfig({
         pkg : grunt.file.readJSON('package.json'),
-        lint: {
-            files: ['src/**/*.js','spec/**/*.js']
-        },
-        watch: {
-            files: ['<config:jasmine.specs>','src/**/*js'],
-            tasks: 'jasmine'
-        },
-        jasmine : {
-            src   : 'src/**/*.js',
-            specs : 'spec/**/*.js'
-        },
+       
         jshint: {
             options: {
                 curly: true,
@@ -35,6 +25,14 @@ module.exports = function(grunt) {
                 expect : false,
                 it : false,
                 spyOn : false
+            },
+            all: ['src/G.js', 'src/lang/*.js']
+        },
+
+        jsdoc : {
+            dist : {
+                src: ['src/G.js', 'src/lang/*.js'], 
+                dest: 'doc'
             }
         },
 
@@ -57,8 +55,8 @@ module.exports = function(grunt) {
                 banner : '/*! <%= pkg.name %> <%= grunt.template.today("yyyy-mm-dd") %> */\n'
             },
             build : {
-                src : 'dest/mePlayer.js',
-                dest : 'dest/mePlayer.min.js'
+                src : 'dest/g.js',
+                dest : 'dest/g.min.js'
             }
         },
 		cssmin: {
@@ -69,10 +67,11 @@ module.exports = function(grunt) {
         }
     });
 
-    grunt.loadNpmTasks('grunt-jasmine-runner');
+    grunt.loadNpmTasks('grunt-contrib-jshint');
+    grunt.loadNpmTasks('grunt-jsdoc-plugin');
     grunt.loadNpmTasks('grunt-contrib-concat');
     grunt.loadNpmTasks('grunt-contrib-uglify');
     grunt.loadNpmTasks('grunt-css');
 
-    grunt.registerTask('default', ['lint', 'jasmine', 'concat', 'uglify', 'cssmin']);
+    grunt.registerTask('default', ['jshint', 'concat', 'uglify', 'cssmin']);
 }; 

@@ -20,7 +20,7 @@ var G = (function(){
     function className(node, value){
         var klass = node.className, svg  = klass && klass.baseVal !== undefined
         if (value === undefined){ return svg ? klass.baseVal : klass; }
-        svg ? (klass.baseVal = value) : (node.className = value);
+        svg ? (klass.baseVal = value) : (node.className = value)
     }
     function getCssProperty(ele, property){
         var style = window.getComputedStyle(ele, null) || ele.currentStyle;

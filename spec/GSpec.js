@@ -12,8 +12,7 @@ describe("G", function() {
             expect(obj.a).toBe(1);
             expect(obj.b).toBe('string');
         });
-
      
     });
-    
+
 });

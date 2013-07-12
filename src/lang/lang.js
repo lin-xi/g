@@ -19,7 +19,7 @@
                 if (this[i] === item) {return i;}
             }
             return -1;
-        },
+        }
 	}
 	// array lastIndexOf
 	if(!Array.prototype.lastIndexOf){
