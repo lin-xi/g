@@ -14,8 +14,32 @@ var G = (function(){
     classSelectorRE = /^\.([\w-]+)$/,
     idSelectorRE = /^#([\w-]*)$/,
     tagSelectorRE = /^[\w-]+$/,
+    filterRe = new RegExp('(.*):(\\w+)(?:\\(([^)]+)\\))?$\\s*'),
+    childRe  = /^\s*>/,
+    classTag = 'G' + (+new Date())
 
-    methods = ['val', 'css', 'html', 'text', 'data', 'width', 'height', 'offset'];
+    methods = ['val', 'css', 'html', 'text', 'data', 'width', 'height', 'offset'],
+    adjacencyOperators = [ 'after', 'prepend', 'before', 'append' ],
+    table = document.createElement('table'),
+    tableRow = document.createElement('tr'),
+    containers = {
+        'tr': document.createElement('tbody'),
+        'tbody': table, 'thead': table, 'tfoot': table,
+        'td': tableRow, 'th': tableRow,
+        '*': document.createElement('div')
+    };
+
+    /**
+     * @constructor
+     * @param {string} selector - selector.
+     * @param {object} context - context.
+     */
+    $ = function(selector, context){
+        return g.init(selector, context);
+    };
+    $.uuid = 0;
+    $.support = {};
+    $.expr = {};
 
     function className(node, value){
         var klass = node.className, svg  = klass && klass.baseVal !== undefined
@@ -115,10 +139,9 @@ var G = (function(){
 	};
 
 	g.init = function(selector, context) {
-    	// If nothing given, return an empty Zepto collection
     	if (!selector){
     		return g.DOM(); 
-    	} else if (zepto.isG(selector)){
+    	} else if (g.isG(selector)){
     		return selector;
     	} else {
       		var dom;
@@ -127,7 +150,7 @@ var G = (function(){
       		} else if (isObject(selector)) {
       			dom = [isPlainObject(selector) ? $.extend({}, selector) : selector], selector = null;
       		} else if (fragmentRE.test(selector)){
-        		dom = zepto.fragment(selector.trim(), RegExp.$1, context), selector = null;
+        		dom = g.fragment(selector.trim(), RegExp.$1, context), selector = null;
       		} else if (context !== undefined){
       			return $(context).find(selector);
       		} else {
@@ -137,18 +160,7 @@ var G = (function(){
       	return g.DOM(dom, selector);
     };
 
-    g.query = function(element, selector){
-    	var found
-    	return (isDocument(element) && idSelectorRE.test(selector)) ?
-      			((found = element.getElementById(RegExp.$1)) ? [found] : [] ) :
-      			(element.nodeType !== 1 && element.nodeType !== 9) ? [] :
-  				slice.call(
-        			classSelectorRE.test(selector) ? element.getElementsByClassName(RegExp.$1) :
-        			tagSelectorRE.test(selector) ? element.getElementsByTagName(selector) :
-        			element.querySelectorAll(selector));
-  	};
-
-	g.fragment = function(html, name, properties) {
+	g.create = function(html, name, properties) {
     	if (html.replace){ html = html.replace(tagExpanderRE, "<$1></$2>");	}
     	if (name === undefined){ name = fragmentRE.test(html) && RegExp.$1;}
     	if (!(name in containers)){ name = '*';}
@@ -171,7 +183,72 @@ var G = (function(){
     	return dom;
 	};
 
-    g.matches = function(element, selector) {
+    function visible(elem){
+        elem = $(elem)
+        return !!(elem.width() || elem.height()) && elem.css("display") !== "none"
+    }
+
+    var cssFilters = $.expr[':'] = {
+        visible:  function(){ if (visible(this)) return this },
+        hidden:   function(){ if (!visible(this)) return this },
+        selected: function(){ if (this.selected) return this },
+        checked:  function(){ if (this.checked) return this },
+        parent:   function(){ return this.parentNode },
+        first:    function(idx){ if (idx === 0) return this },
+        last:     function(idx, nodes){ if (idx === nodes.length - 1) return this },
+        eq:       function(idx, _, value){ if (idx === value) return this },
+        contains: function(idx, _, text){ if ($(this).text().indexOf(text) > -1) return this },
+        has:      function(idx, _, sel){ if (zepto.qsa(this, sel).length) return this }
+    }
+
+    function process(sel, fn) {
+        // quote the hash in `a[href^=#]` expression
+        sel = sel.replace(/=#\]/g, '="#"]')
+        var cssfilter, arg, match = filterRe.exec(sel)
+        if (match && match[2] in cssFilters) {
+            cssfilter = cssFilters[match[2]], arg = match[3]
+            sel = match[1]
+            if (arg) {
+                var num = Number(arg)
+                if (isNaN(num)) arg = arg.replace(/^["']|["']$/g, '')
+                else arg = num
+            }
+        }
+        return fn(sel, filter, arg)
+    }
+
+    g._query = function(element, selector){
+        var found
+        return (isDocument(element) && idSelectorRE.test(selector)) ?
+                ((found = element.getElementById(RegExp.$1)) ? [found] : [] ) :
+                (element.nodeType !== 1 && element.nodeType !== 9) ? [] :
+                slice.call(
+                    classSelectorRE.test(selector) ? element.getElementsByClassName(RegExp.$1) :
+                    tagSelectorRE.test(selector) ? element.getElementsByTagName(selector) :
+                    element.querySelectorAll(selector));
+    };
+    g.query = function(node, selector) {
+        return process(selector, function(sel, filter, arg){
+            try {
+                var taggedParent
+                if (!sel && filter) sel = '*'
+                else if (childRe.test(sel))
+                    // support "> *" child queries by tagging the parent node with a
+                    // unique class and prepending that classname onto the selector
+                    taggedParent = $(node).addClass(classTag), sel = '.'+classTag+' '+sel
+
+                var nodes = g._query(node, sel)
+            } catch(e) {
+                console.error('error performing selector: %o', selector)
+                throw e
+            } finally {
+                if (taggedParent) taggedParent.removeClass(classTag)
+            }
+            return !filter ? nodes : unique($.map(nodes, function(n, i){ return filter.call(n, i, nodes, arg) }))
+        });
+    }
+
+    g._matches = function(element, selector) {
         if (!element || element.nodeType !== 1){ return false;}
         var matchesSelector = element.webkitMatchesSelector || element.mozMatchesSelector || element.oMatchesSelector || element.matchesSelector ||
                             function (element, selector) {
@@ -188,20 +265,14 @@ var G = (function(){
         temp && tempParent.removeChild(element);
         return match;
     };
+    g.matches = function(node, selector){
+        return process(selector, function(sel, filter, arg){
+            return (!sel || g._matches(node, sel)) &&
+            (!filter || filter.call(node, null, arg) === node)
+        })
+    };
 
-    /**
-     * Represents a book.
-     * @constructor
-     * @param {string} selector - selector.
-     * @param {object} context - context.
-     */
-	$ = function(selector, context){
-    	return g.init(selector, context);
-  	};
 
-  	$.uuid = 0;
-  	$.support = {};
-  	$.expr = {};
 
   	$.type = type;
   	$.isFunction = isFunction;
@@ -257,6 +328,7 @@ var G = (function(){
   	$.contains = function(parent, node) {
     	return parent !== node && parent.contains(node);
 	};
+    $.query = g.query;
 	/**
   	 * inArray
   	 */
@@ -280,7 +352,7 @@ var G = (function(){
                 if (value != null){ values.push(value);}
             }
         }
-        return values;
+        return flatten(values);
     };
     $.grep = function(elements, callback){
         return filter.call(elements, callback);
@@ -381,9 +453,9 @@ var G = (function(){
                     });
                 });
             } else if (this.length == 1){
-                result = $(zepto.qsa(this[0], selector));
+                result = $(g.query(this[0], selector));
             } else {
-                result = this.map(function(){ return zepto.qsa(this, selector) });
+                result = this.map(function(){ return g.query(this, selector) });
             }
             return result;
         },
@@ -656,8 +728,69 @@ var G = (function(){
                 }
                 return parent;
             })
+        },
+        width: function(value){
+            var offset, el = this[0];
+            if (value === undefined) return isWindow(el) ? el['innerWidth'] : isDocument(el) ? el.documentElement['offsetWidth'] : (offset = this.offset()) && offset['width']
+            else return this.each(function(idx){
+                el = $(this)
+                el.css('width', funcArg(this, value, idx, el['width']()))
+            })
+        },
+        height: function(value){
+            var offset, el = this[0];
+            if (value === undefined) return isWindow(el) ? el['innerHeight'] : isDocument(el) ? el.documentElement['offsetHeight'] : (offset = this.offset()) && offset['height']
+            else return this.each(function(idx){
+                el = $(this)
+                el.css('height', funcArg(this, value, idx, el['height']()))
+            })
         }
     };
+
+    adjacencyOperators.forEach(function(operator, operatorIndex) {
+        var inside = operatorIndex % 2 //=> prepend, append
+
+        $.fn[operator] = function(){
+            // arguments can be nodes, arrays of nodes, Zepto objects and HTML strings
+            var argType, nodes = $.map(arguments, function(arg) {
+                argType = type(arg)
+                return argType == "object" || argType == "array" || arg == null ? arg : g.create(arg)
+            }),
+            parent, copyByClone = this.length > 1
+            if (nodes.length < 1) return this
+
+            return this.each(function(_, target){
+                parent = inside ? target : target.parentNode
+                // convert all methods to a "before" operation
+                target = operatorIndex == 0 ? target.nextSibling : operatorIndex == 1 ? target.firstChild : operatorIndex == 2 ? target : null
+
+                $.each(nodes, function(index, node){
+                    if (copyByClone) node = node.cloneNode(true)
+                    else if (!parent) return $(node).remove()
+
+                    traverseNode(parent.insertBefore(node, target), function(el){
+                        if (el.nodeName != null && el.nodeName.toUpperCase() === 'SCRIPT' && (!el.type || el.type === 'text/javascript') && !el.src)
+                            window['eval'].call(window, el.innerHTML)
+                    });
+                })
+            })
+        };
+
+        // after    => insertAfter
+        // prepend  => prependTo
+        // before   => insertBefore
+        // append   => appendTo
+        $.fn[inside ? operator+'To' : 'insert'+(operatorIndex ? 'Before' : 'After')] = function(html){
+            $(html)[operator](this)
+            return this
+        }
+
+        function traverseNode(node, fun) {
+            fun(node)
+            for (var key in node.childNodes) traverseNode(node.childNodes[key], fun)
+        }
+
+    });
 
     return $;
 
