@@ -189,6 +189,12 @@ var G = (function(){
         return match;
     };
 
+    /**
+     * Represents a book.
+     * @constructor
+     * @param {string} selector - selector.
+     * @param {object} context - context.
+     */
 	$ = function(selector, context){
     	return g.init(selector, context);
   	};
